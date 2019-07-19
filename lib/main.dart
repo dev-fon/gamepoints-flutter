@@ -1,21 +1,16 @@
 import 'package:flutter/material.dart';
-//import 'package:flutter/services.dart';
+import 'package:animator/animator.dart';
+import 'package:gamepointsflutter/services/settings_service.dart';
+import './settings.dart';
+import './models/player.dart';
 
 void main() {
-  //SystemChrome.setEnabledSystemUIOverlays([]);
   runApp(MaterialApp(
     home: Home(),
     theme: ThemeData(
       primarySwatch: Colors.blueGrey,
     ),
   ));
-}
-
-class Player {
-  String name;
-  int points;
-
-  Player({this.name, this.points});
 }
 
 class Home extends StatefulWidget {
@@ -25,22 +20,44 @@ class Home extends StatefulWidget {
 
 class HomeState extends State<Home> {
   final TextEditingController controller = TextEditingController();
+  final SettingsService _settingsService = SettingsService();
   final List<Player> _players = [];
   bool entryToggle = true;
   bool isButtonEnabled = false;
+  bool _useTimer;
 
   addPlayer(String name) {
-    setState(() {
-      _players.add(Player(name: name, points: 0));
-    });
+    if (name.length > 0) {
+      setState(() {
+        _players.add(Player(name: name, points: 0));
+      });
+    }
+
     controller.text = '';
     isButtonEnabled = false;
+  }
+
+     @override
+  void initState() {
+    super.initState();
+    _loadCounter();
+  }
+
+  _loadCounter() async {
+      setState(() {
+        _useTimer = _settingsService.useTimer;
+    });
+  }
+
+  getUseTimer() {
+
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("GamePoints"), actions: [
+      //appBar: AppBar(title: Text("GamePoints"), actions: [
+        appBar: AppBar(title: Text(, actions: [
         IconButton(
           icon: Icon(Icons.delete_forever, color: Colors.white),
           tooltip: "Delete all",
@@ -72,6 +89,18 @@ class HomeState extends State<Home> {
           },
         )
       ]),
+       drawer: Drawer(
+          child: ListView(
+        children: [
+          Container(
+            height: 50.0,
+            child: DrawerHeader(
+              child: Text('Settings'),
+            ),
+          ),
+          Settings()
+        ],
+      )),
       body: Container(
         padding: const EdgeInsets.all(10.0),
         child: Center(
@@ -94,7 +123,6 @@ class HomeState extends State<Home> {
                               value.length > 0
                                   ? isButtonEnabled = true
                                   : isButtonEnabled = false;
-
                               if (value.length > 0 && value.contains("\n")) {
                                 addPlayer(value.trim());
                               }
@@ -175,8 +203,33 @@ class SimpleListState extends State<SimpleList> {
 
 class CardList extends StatelessWidget {
   final List<Player> players;
+  final List<Color> colors = [
+    Colors.grey,
+    Colors.cyan[900],
+    Colors.deepPurple,
+    Colors.red,
+    Colors.blue,
+    Colors.blueGrey,
+    Colors.green,
+    Colors.brown
+  ];
 
   CardList({Key key, this.players}) : super(key: key);
+
+  double getCardAspectRatio(BuildContext context, Orientation orientation) {
+    var size = MediaQuery.of(context).size;
+    var toolbarYield =
+        orientation == Orientation.portrait ? kToolbarHeight : 73;
+    final double itemHeight = (size.height - toolbarYield - 24) / 2;
+
+    return orientation == Orientation.portrait
+        ? (size.width * 1.4 / itemHeight)
+        : (itemHeight / size.width * 9.4);
+  }
+
+  Color getPlayerColor(int index) {
+    return colors[index % colors.length];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -187,11 +240,11 @@ class CardList extends StatelessWidget {
               primary: true,
               padding: const EdgeInsets.all(0.3),
               crossAxisCount: orientation == Orientation.portrait ? 2 : 3,
-              childAspectRatio: orientation == Orientation.portrait ? 2 : 2.2,
+              childAspectRatio: getCardAspectRatio(context, orientation),
               mainAxisSpacing: 1.0,
               crossAxisSpacing: 1.0,
               children: List.generate(players.length, (i) {
-                return PlayerCard(player: players[i]);
+                return PlayerCard(player: players[i], color: getPlayerColor(i));
               }));
         });
   }
@@ -199,39 +252,28 @@ class CardList extends StatelessWidget {
 
 class PlayerCard extends StatefulWidget {
   final Player player;
-  const PlayerCard({Key key, this.player}) : super(key: key);
+  final Color color;
+
+  const PlayerCard({Key key, this.player, this.color}) : super(key: key);
 
   @override
-  PlayerCardState createState() => PlayerCardState(player: player);
+  PlayerCardState createState() =>
+      PlayerCardState(player: player, color: color);
 }
 
 class PlayerCardState extends State<PlayerCard> {
   Player player;
+  Color color;
+  bool showAnimation = false;
 
-  final List<Color> colors = [
-    Colors.grey,
-    Colors.cyan[900],
-    Colors.deepPurple,
-    Colors.red,
-    Colors.blue,
-    Colors.blueGrey,
-  ];
-
-  PlayerCardState({Key key, this.player});
-
-  Color getRandomColor() {
-    return colors[player.name.length % colors.length];
-  }
+  PlayerCardState({Key key, this.player, this.color});
 
   @override
   Widget build(BuildContext context) {
     return Card(
-        color: getRandomColor(),
-        elevation: 1.5,
+        color: color,
+        elevation: 0,
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          verticalDirection: VerticalDirection.down,
           children: [
             Center(
               child: Text(
@@ -246,15 +288,22 @@ class PlayerCardState extends State<PlayerCard> {
                 onPressed: () {
                   setState(() {
                     player.points--;
+                   // showAnimation = true;
                   });
                 },
               ),
-              Expanded(
-                  child: Text(
-                player.points.toString(),
-                style: TextStyle(color: Colors.white, fontSize: 55),
-                textAlign: TextAlign.center,
-              )),
+              Animator(
+                  duration: Duration(milliseconds: showAnimation ? 500 : 0),
+                  cycles: 4,
+                  //endAnimationListener: showAnimation,
+                  //endAnimationListener: () => print("animation finished"),
+                  builder: (anim) => Expanded(
+                          child: Text(
+                        player.points.toString(),
+                        style: TextStyle(
+                            color: Colors.white, fontSize: showAnimation ? 55 * anim.value : 55),
+                        textAlign: TextAlign.center,
+                      ))),
               IconButton(
                 icon: Icon(
                   Icons.add_circle,
@@ -264,6 +313,7 @@ class PlayerCardState extends State<PlayerCard> {
                 onPressed: () {
                   setState(() {
                     player.points++;
+                    //showAnimation = true;
                   });
                 },
               ),
