@@ -1,8 +1,15 @@
+import 'dart:async';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:audioplayers/audioplayers.dart';
+import 'package:audioplayers/audio_cache.dart';
 import 'package:flutter/material.dart';
-import 'package:animator/animator.dart';
-import 'package:gamepointsflutter/services/settings_service.dart';
-import './settings.dart';
+
 import './models/player.dart';
+import './simple_list.dart';
+import './card_list.dart';
+import './menu.dart';
+
+const DEFAULT_TIMER_VALUE = 120;
 
 void main() {
   runApp(MaterialApp(
@@ -20,11 +27,19 @@ class Home extends StatefulWidget {
 
 class HomeState extends State<Home> {
   final TextEditingController controller = TextEditingController();
-  final SettingsService _settingsService = SettingsService();
   final List<Player> _players = [];
-  bool entryToggle = true;
-  bool isButtonEnabled = false;
-  bool _useTimer;
+  bool _entryToggle = true;
+  bool _isButtonEnabled = false;
+  bool _isStartGameButtonEnabled = false;
+  bool _useTimer = false;
+  bool _usePastPlayers = true;
+  int _maxTimerValue = DEFAULT_TIMER_VALUE;
+  int _currentTimerValue = 0;
+  Stopwatch _stopwatch = Stopwatch();
+  AudioPlayer audioPlayer;
+  Timer _timer;
+  List<String> _previouslyAddedPlayers = [];
+  int _maxPrevPlayers = 9;
 
   addPlayer(String name) {
     if (name.length > 0) {
@@ -34,71 +49,202 @@ class HomeState extends State<Home> {
     }
 
     controller.text = '';
-    isButtonEnabled = false;
+    _isButtonEnabled = false;
   }
 
-     @override
+  @override
   void initState() {
+    _loadTimer();
+    _loadPrevPlayers();
+
     super.initState();
-    _loadCounter();
   }
 
-  _loadCounter() async {
-      setState(() {
-        _useTimer = _settingsService.useTimer;
+  @override
+  void dispose() {
+    _stopwatch?.stop();
+    super.dispose();
+  }
+
+  _loadTimer() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _useTimer = prefs.getBool('useTimer') ?? true;
+
+      if (_useTimer)
+        _timer = new Timer.periodic(new Duration(seconds: 1), refreshUi);
     });
   }
 
-  getUseTimer() {
+  _loadPrevPlayers() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _usePastPlayers = prefs.getBool('usePastPlayers') ?? true;
 
+      _previouslyAddedPlayers =
+          prefs.getStringList('previouslyAddedPlayers') ?? [];
+
+      if (_usePastPlayers) {
+        _previouslyAddedPlayers
+            .forEach((playerName) => _addIfNotFound(playerName));
+      } else {
+        prefs.setStringList('previouslyAddedPlayers', []);
+      }
+
+      _toggleStartGameButtonEnableState();
+    });
+  }
+
+  _addIfNotFound(String playerName) {
+    if (!_players.contains(playerName))
+      _players.add(Player(name: playerName, points: 0));
+  }
+
+  refreshUi(Timer timer) {
+    setState(() {
+      if (!_useTimer) {
+        return;
+      }
+
+      _currentTimerValue = _maxTimerValue - _stopwatch.elapsed.inSeconds;
+
+      if (_stopwatch.elapsed.inSeconds >= _maxTimerValue) {
+        print("here");
+        _currentTimerValue = 0;
+        _stopwatch.stop();
+        _stopwatch.reset();
+        play();
+        _timer.cancel();
+        stop();
+      }
+    });
+  }
+
+  Future play() async {
+    audioPlayer = await AudioCache().play("air-horn_1.mp3");
+  }
+
+  Future stop() async {
+    await audioPlayer.stop();
+  }
+
+  _toggleStartGameButtonEnableState() {
+    setState(() {
+      _players.length > 0
+          ? _isStartGameButtonEnabled = true
+          : _isStartGameButtonEnabled = false;
+    });
+  }
+
+  startTimer() {
+    setState(() {
+      _currentTimerValue = _maxTimerValue;
+      _stopwatch.reset();
+
+      if (!_stopwatch.isRunning) _stopwatch.start();
+
+      if (_useTimer)
+        _timer = new Timer.periodic(new Duration(seconds: 1), refreshUi);
+    });
+  }
+
+  savePlayersToDisk() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+
+    for (var player in _players) {
+      if (!_previouslyAddedPlayers.contains(player.name))
+        _previouslyAddedPlayers.add(player.name);
+    }
+
+    var sublistLen = _previouslyAddedPlayers.length <= _maxPrevPlayers
+        ? _previouslyAddedPlayers.length
+        : _maxPrevPlayers;
+    prefs.setStringList('previouslyAddedPlayers',
+        _previouslyAddedPlayers.sublist(0, sublistLen));
+  }
+
+  void _showDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text("Duplicate Player"),
+          content: Text("Enter a unique player name"),
+          actions: <Widget>[
+            FlatButton(
+              child: Text("Close"),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      //appBar: AppBar(title: Text("GamePoints"), actions: [
-        appBar: AppBar(title: Text(, actions: [
-        IconButton(
-          icon: Icon(Icons.delete_forever, color: Colors.white),
-          tooltip: "Delete all",
-          onPressed: () {
-            setState(() {
-              _players.clear();
-              entryToggle = true;
-            });
-          },
-        ),
-        IconButton(
-          icon: Icon(Icons.refresh, color: Colors.white),
-          tooltip: "Clear points",
-          onPressed: () {
-            setState(() {
-              for (var player in _players) {
-                player.points = 0;
-              }
-            });
-          },
-        ),
-        IconButton(
-          icon: Icon(Icons.group_add, color: Colors.white),
-          tooltip: "Add",
-          onPressed: () {
-            setState(() {
-              entryToggle = !entryToggle;
-            });
-          },
-        )
-      ]),
-       drawer: Drawer(
+      appBar: AppBar(
+        title: Text("GamePoints"),
+        actions: [
+          _useTimer && !_entryToggle
+              ? FlatButton(
+                  textColor: Colors.white,
+                  padding: EdgeInsets.all(10),
+                  child: Text("$_currentTimerValue sec",
+                      style: TextStyle(fontSize: 30)),
+                  onPressed: () {
+                    startTimer();
+                  },
+                )
+              : Container()
+        ],
+      ),
+      drawer: Drawer(
           child: ListView(
         children: [
           Container(
             height: 50.0,
             child: DrawerHeader(
-              child: Text('Settings'),
+              child: Text('Menu'),
             ),
           ),
-          Settings()
+          Menu(
+            onTimerToggled: () {
+              setState(() {
+                _loadTimer();
+              });
+            },
+            onAddPlayerPressed: () {
+              setState(() {
+                _entryToggle = true;
+                _toggleStartGameButtonEnableState();
+              });
+            },
+            onDeleteAllPressed: () {
+              setState(() {
+                _players.clear();
+                _entryToggle = true;
+                _toggleStartGameButtonEnableState();
+              });
+            },
+            onClearPointsPressed: () {
+              setState(() {
+                for (var player in _players) {
+                  player.points = 0;
+                }
+
+                startTimer();
+              });
+            },
+            onPastPlayersToggled: () {
+              setState(() {
+                _loadPrevPlayers();
+              });
+            },
+          ),
         ],
       )),
       body: Container(
@@ -108,7 +254,7 @@ class HomeState extends State<Home> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Visibility(
-                  visible: entryToggle,
+                  visible: _entryToggle,
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -121,10 +267,11 @@ class HomeState extends State<Home> {
                           onChanged: (value) {
                             setState(() {
                               value.length > 0
-                                  ? isButtonEnabled = true
-                                  : isButtonEnabled = false;
+                                  ? _isButtonEnabled = true
+                                  : _isButtonEnabled = false;
                               if (value.length > 0 && value.contains("\n")) {
                                 addPlayer(value.trim());
+                                _toggleStartGameButtonEnableState();
                               }
                             });
                           },
@@ -134,17 +281,50 @@ class HomeState extends State<Home> {
                         ),
                         RaisedButton(
                             child: Icon(Icons.add),
-                            onPressed: isButtonEnabled
+                            onPressed: _isButtonEnabled
                                 ? () {
-                                    addPlayer(controller.text);
+                                    setState(() {
+                                      if (_players.any(
+                                          (p) => p.name == controller.text)) {
+                                        _showDialog();
+                                      } else {
+                                        addPlayer(controller.text);
+                                        _toggleStartGameButtonEnableState();
+                                      }
+                                    });
+                                  }
+                                : null),
+                        RaisedButton(
+                            child: Text('Start Game'),
+                            onPressed: _isStartGameButtonEnabled
+                                ? () {
+                                    setState(() {
+                                      _entryToggle = false;
+                                      startTimer();
+                                      savePlayersToDisk();
+                                    });
                                   }
                                 : null),
                       ])),
               _players.length > 0
                   ? Expanded(
-                      child: entryToggle
-                          ? SimpleList(players: _players)
-                          : CardList(players: _players),
+                      child: _entryToggle
+                          ? SimpleList(
+                              players: _players,
+                              onDeletePressed: () {
+                                setState(() {
+                                  _toggleStartGameButtonEnableState();
+                                });
+                              },
+                            )
+                          : CardList(
+                              players: _players,
+                              onPointsChanged: () {
+                                setState(() {
+                                  startTimer();
+                                });
+                              },
+                            ),
                     )
                   : Text("")
             ],
@@ -152,173 +332,5 @@ class HomeState extends State<Home> {
         ),
       ),
     );
-  }
-}
-
-class SimpleList extends StatefulWidget {
-  final List<Player> players;
-
-  SimpleList({Key key, this.players});
-  @override
-  State<StatefulWidget> createState() {
-    return SimpleListState(players: players);
-  }
-}
-
-class SimpleListState extends State<SimpleList> {
-  final List<Player> players;
-
-  SimpleListState({Key key, this.players});
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      children: ListTile.divideTiles(
-        context: context,
-        tiles: List.generate(
-          players.length,
-          (i) {
-            return ListTile(
-                leading: Icon(Icons.account_circle,
-                    color: Theme.of(context).accentColor),
-                title: Text(
-                  players[i].name,
-                  textAlign: TextAlign.left,
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                trailing: IconButton(
-                    icon: Icon(Icons.restore_from_trash,
-                        color: Theme.of(context).errorColor),
-                    onPressed: () {
-                      setState(() {
-                        players.remove(players[i]);
-                      });
-                    }));
-          },
-        ),
-      ).toList(),
-    );
-  }
-}
-
-class CardList extends StatelessWidget {
-  final List<Player> players;
-  final List<Color> colors = [
-    Colors.grey,
-    Colors.cyan[900],
-    Colors.deepPurple,
-    Colors.red,
-    Colors.blue,
-    Colors.blueGrey,
-    Colors.green,
-    Colors.brown
-  ];
-
-  CardList({Key key, this.players}) : super(key: key);
-
-  double getCardAspectRatio(BuildContext context, Orientation orientation) {
-    var size = MediaQuery.of(context).size;
-    var toolbarYield =
-        orientation == Orientation.portrait ? kToolbarHeight : 73;
-    final double itemHeight = (size.height - toolbarYield - 24) / 2;
-
-    return orientation == Orientation.portrait
-        ? (size.width * 1.4 / itemHeight)
-        : (itemHeight / size.width * 9.4);
-  }
-
-  Color getPlayerColor(int index) {
-    return colors[index % colors.length];
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return OrientationBuilder(
-        key: key,
-        builder: (context, orientation) {
-          return GridView.count(
-              primary: true,
-              padding: const EdgeInsets.all(0.3),
-              crossAxisCount: orientation == Orientation.portrait ? 2 : 3,
-              childAspectRatio: getCardAspectRatio(context, orientation),
-              mainAxisSpacing: 1.0,
-              crossAxisSpacing: 1.0,
-              children: List.generate(players.length, (i) {
-                return PlayerCard(player: players[i], color: getPlayerColor(i));
-              }));
-        });
-  }
-}
-
-class PlayerCard extends StatefulWidget {
-  final Player player;
-  final Color color;
-
-  const PlayerCard({Key key, this.player, this.color}) : super(key: key);
-
-  @override
-  PlayerCardState createState() =>
-      PlayerCardState(player: player, color: color);
-}
-
-class PlayerCardState extends State<PlayerCard> {
-  Player player;
-  Color color;
-  bool showAnimation = false;
-
-  PlayerCardState({Key key, this.player, this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-        color: color,
-        elevation: 0,
-        child: Column(
-          children: [
-            Center(
-              child: Text(
-                player.name.toUpperCase(),
-                style: TextStyle(color: Colors.white, fontSize: 25),
-              ),
-            ),
-            Row(children: [
-              IconButton(
-                icon: Icon(Icons.remove_circle_outline,
-                    size: 38, color: Colors.white),
-                onPressed: () {
-                  setState(() {
-                    player.points--;
-                   // showAnimation = true;
-                  });
-                },
-              ),
-              Animator(
-                  duration: Duration(milliseconds: showAnimation ? 500 : 0),
-                  cycles: 4,
-                  //endAnimationListener: showAnimation,
-                  //endAnimationListener: () => print("animation finished"),
-                  builder: (anim) => Expanded(
-                          child: Text(
-                        player.points.toString(),
-                        style: TextStyle(
-                            color: Colors.white, fontSize: showAnimation ? 55 * anim.value : 55),
-                        textAlign: TextAlign.center,
-                      ))),
-              IconButton(
-                icon: Icon(
-                  Icons.add_circle,
-                  size: 38,
-                  color: Colors.white,
-                ),
-                onPressed: () {
-                  setState(() {
-                    player.points++;
-                    //showAnimation = true;
-                  });
-                },
-              ),
-            ]),
-          ],
-        ));
   }
 }
