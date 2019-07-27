@@ -15,6 +15,10 @@ to store player names to disk for easy re-use when the app is used again at a la
 3. Using OrientationBuilder to change behavior based on phone orientation
 4. Asynchronous programming in Dart using Timer and Future<T>
 5. Playing sound in a Flutter mobile app
+6. State management using the BLoC pattern
+7. Flutter Animations using AnimationController
+8. Theming and multiple theme switching
+9. Application lifecycle hooks, which are used to pause the stopwatch when app is in the background
  
 ## Previous skills I was able to practice
 1. Dart language syntax and patterns
