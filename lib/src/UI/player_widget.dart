@@ -1,22 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gamepointsflutter/src/blocs/player_bloc/player_bloc.dart';
 import '../models/player.dart';
 
 const Duration _playerCardFadeDuration = const Duration(milliseconds: 2100);
 
 class PlayerWidget extends StatefulWidget {
-  final PlayerBloc playerBloc;
   final Player player;
   final Color color;
   final VoidCallback onPointsChanged;
 
-  const PlayerWidget(
-      {Key key,
-      @required this.playerBloc,
-      this.player,
-      this.color,
-      this.onPointsChanged});
+  const PlayerWidget({Key key, this.player, this.color, this.onPointsChanged});
 
   static final navKey = new GlobalKey<NavigatorState>();
 
@@ -67,6 +62,8 @@ class PlayerWidgetState extends State<PlayerWidget>
 
   @override
   Widget build(BuildContext context) {
+    PlayerBloc playerBloc = BlocProvider.of<PlayerBloc>(context);
+
     return Card(
       color: animation?.value ?? cardColor,
       elevation: 0,
@@ -89,7 +86,7 @@ class PlayerWidgetState extends State<PlayerWidget>
                 onPressed: () {
                   setState(() {
                     animationController.forward();
-                    widget.playerBloc.removePoint(widget.player);
+                    playerBloc.removePoint(widget.player);
                     widget.onPointsChanged();
                   });
                 },
@@ -111,7 +108,7 @@ class PlayerWidgetState extends State<PlayerWidget>
                 onPressed: () {
                   setState(() {
                     animationController.forward();
-                    widget.playerBloc.addPoint(widget.player);
+                    playerBloc.addPoint(widget.player);
                     widget.onPointsChanged();
                   });
                 },

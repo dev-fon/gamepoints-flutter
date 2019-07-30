@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:gamepointsflutter/src/UI/settings_menu.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:audioplayers/audio_cache.dart';
@@ -23,7 +24,7 @@ class App extends StatefulWidget {
 
 class AppState extends State<App> with WidgetsBindingObserver {
   final TextEditingController controller = TextEditingController();
-  final _playerBloc = PlayerBloc();
+  PlayerBloc _playerBloc;
   bool _entryToggle = true;
   bool _isButtonEnabled = false;
   bool _useTimer = false;
@@ -40,6 +41,7 @@ class AppState extends State<App> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    _playerBloc = BlocProvider.of<PlayerBloc>(context);
     _loadTheme();
     _loadTimer();
     _loadPrevPlayers();
@@ -98,8 +100,8 @@ class AppState extends State<App> with WidgetsBindingObserver {
           prefs.getStringList('previouslyAddedPlayers') ?? [];
 
       if (_usePastPlayers) {
-        _previouslyAddedPlayers
-            .forEach((playerName) => _addIfNotFound(playerName, _playerBloc.currentState.players));
+        _previouslyAddedPlayers.forEach((playerName) =>
+            _addIfNotFound(playerName, _playerBloc.currentState.players));
       } else {
         prefs.setStringList('previouslyAddedPlayers', []);
       }
@@ -202,11 +204,57 @@ class AppState extends State<App> with WidgetsBindingObserver {
     );
   }
 
+  void _showSettingsDialog(BuildContext myContext) {
+    showDialog(
+      context: myContext,
+      builder: (BuildContext bContext) {
+        return AlertDialog(
+          title: Text(
+            "Settings",
+            style: TextStyle(
+                color: Theme.of(bContext).primaryTextTheme.display1.color),
+          ),
+          content: Column(
+            children: [
+              SettingsMenu(
+                    onTimerToggled: () {
+                      setState(() {
+                        _loadTimer();
+                      });
+                    },
+                    onPastPlayersToggled: () {
+                      setState(() {
+                        _loadPrevPlayers();
+                      });
+                    },
+                    onThemeSelected: () {
+                      setState(() {
+                        _loadTheme();
+                      });
+                    },
+                  ) ??
+                  [Container()]
+            ],
+            mainAxisSize: MainAxisSize.min,
+          ),
+          contentPadding: EdgeInsets.all(10),
+          actions: [
+            FlatButton(
+              child: Text("Close"),
+              onPressed: () {
+                Navigator.of(bContext).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder(
-      bloc: _playerBloc,
-      builder: (context, PlayerState state) {
+    return BlocBuilder<PlayerBloc, PlayerState>(
+      builder: (context, state) {
         return MaterialApp(
           navigatorKey: App.navKey,
           theme: selectedTheme ??
@@ -216,154 +264,141 @@ class AppState extends State<App> with WidgetsBindingObserver {
                   primaryTextTheme:
                       TextTheme(display1: TextStyle(color: Colors.white))),
           home: Scaffold(
-            appBar: AppBar(
-              title: Text("GamePoints"),
-              actions: [
-                _useTimer && !_entryToggle
-                    ? FlatButton(
-                        padding: EdgeInsets.all(10),
-                        child: Text("$_currentTimerValue sec",
-                            style: TextStyle(
-                                fontSize: 30,
-                                color: Theme.of(
-                                        App.navKey.currentState.overlay.context)
-                                    .primaryTextTheme
-                                    .display1
-                                    .color)),
-                        onPressed: () {
-                          startTimer();
-                        },
-                      )
-                    : Container()
-              ],
-            ),
-            drawer: Drawer(
-                child: ListView(
-              children: [
-                Container(
-                  height: 50.0,
-                  child: DrawerHeader(
-                    child: Text(
-                      'Menu',
+              appBar: AppBar(
+                title: Text("GamePoints"),
+                actions: [
+                  _useTimer && !_entryToggle
+                      ? FlatButton(
+                          padding: EdgeInsets.all(10),
+                          child: Text("$_currentTimerValue sec",
+                              style: TextStyle(
+                                  fontSize: 30,
+                                  color: Theme.of(App
+                                          .navKey.currentState.overlay.context)
+                                      .primaryTextTheme
+                                      .display1
+                                      .color)),
+                          onPressed: () {
+                            startTimer();
+                          },
+                        )
+                      : Container(),
+                  IconButton(
+                    // padding: EdgeInsets.all(10),
+                    icon: Icon(Icons.settings),
+                    onPressed: () {
+                      _showSettingsDialog(
+                          App.navKey.currentState.overlay.context);
+                    },
+                  )
+                ],
+              ),
+              drawer: Drawer(
+                  child: ListView(
+                children: [
+                  Container(
+                    height: 50.0,
+                    child: DrawerHeader(
+                      child: Text(
+                        'Menu',
+                      ),
                     ),
                   ),
-                ),
-                Menu(
-                  playerBloc: _playerBloc,
-                  onTimerToggled: () {
-                    setState(() {
-                      _loadTimer();
-                    });
-                  },
-                  onAddPlayerPressed: () {
-                    _entryToggle = true;
-                  },
-                  onClearPointsPressed: () {
-                    setState(() {
-                      startTimer();
-                    });
-                  },
-                  onPastPlayersToggled: () {
-                    setState(() {
-                       _loadPrevPlayers();
-                    });
-                  },
-                  onThemeSelected: () {
-                    setState(() {
-                      _loadTheme();
-                    });
-                  },
-                ),
-              ],
-            )),
-            body: Container(
-                padding: const EdgeInsets.all(10.0),
-                child: Center(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Visibility(
-                        visible: _entryToggle,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            TextField(
-                              decoration: InputDecoration(
-                                  border: OutlineInputBorder(),
-                                  hintText: "Enter a player's name..."),
-                              maxLines: null,
-                              autofocus: true,
-                              onChanged: (value) {
-                                value.length > 0
-                                    ? _isButtonEnabled = true
-                                    : _isButtonEnabled = false;
-                                if (value.length > 0 && value.contains("\n")) {
-                                  controller.text = value.trim();
+                  Menu(
+                      onAddPlayerPressed: () {
+                        _entryToggle = true;
+                      },
+                      onClearPointsPressed: () {
+                        setState(() {
+                          startTimer();
+                        });
+                      }),
+                ],
+              )),
+              body: Container(
+                  padding: const EdgeInsets.all(10.0),
+                  child: Center(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Visibility(
+                          visible: _entryToggle,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              TextField(
+                                decoration: InputDecoration(
+                                    border: OutlineInputBorder(),
+                                    hintText: "Enter a player's name..."),
+                                maxLines: null,
+                                autofocus: true,
+                                onChanged: (value) {
+                                  value.length > 0
+                                      ? _isButtonEnabled = true
+                                      : _isButtonEnabled = false;
+                                  if (value.length > 0 &&
+                                      value.contains("\n")) {
+                                    controller.text = value.trim();
 
-                                  if (state.players
-                                      .any((p) => p.name == controller.text)) {
-                                    _showDialog(App
-                                        .navKey.currentState.overlay.context);
-                                  } else {
-                                    addPlayer(controller.text);
+                                    if (state.players.any(
+                                        (p) => p.name == controller.text)) {
+                                      _showDialog(App
+                                          .navKey.currentState.overlay.context);
+                                    } else {
+                                      addPlayer(controller.text);
+                                    }
                                   }
-                                }
-                              },
-                              controller: controller,
-                              textCapitalization: TextCapitalization.words,
-                              textInputAction: TextInputAction.newline,
-                            ),
-                            RaisedButton(
-                                child: Icon(Icons.add),
-                                onPressed: _isButtonEnabled
-                                    ? () {
-                                        if (state.players.any(
-                                            (p) => p.name == controller.text)) {
-                                          _showDialog(App.navKey.currentState
-                                              .overlay.context);
-                                        } else {
-                                          addPlayer(controller.text);
+                                },
+                                controller: controller,
+                                textCapitalization: TextCapitalization.words,
+                                textInputAction: TextInputAction.newline,
+                              ),
+                              RaisedButton(
+                                  child: Icon(Icons.add),
+                                  onPressed: _isButtonEnabled
+                                      ? () {
+                                          if (state.players.any((p) =>
+                                              p.name == controller.text)) {
+                                            _showDialog(App.navKey.currentState
+                                                .overlay.context);
+                                          } else {
+                                            addPlayer(controller.text);
+                                          }
                                         }
-                                      }
-                                    : null),
-                            RaisedButton(
-                                child: Text('Start Game'),
-                                onPressed: state.players.length > 0
-                                    ? () {
-                                        setState(
-                                          () {
-                                            _entryToggle = false;
-                                            startTimer();
-                                            savePlayersToDisk();
-                                          },
-                                        );
-                                      }
-                                    : null),
-                          ],
+                                      : null),
+                              RaisedButton(
+                                  child: Text('Start Game'),
+                                  onPressed: state.players.length > 0
+                                      ? () {
+                                          setState(
+                                            () {
+                                              _entryToggle = false;
+                                              startTimer();
+                                              savePlayersToDisk();
+                                            },
+                                          );
+                                        }
+                                      : null),
+                            ],
+                          ),
                         ),
-                      ),
-                      state.players.length > 0
-                          ? Expanded(
-                              child: _entryToggle
-                                  ? PlayerList(
-                                      playerBloc: _playerBloc,
-                                      playerState: state
-                                    )
-                                  : CardList(
-                                      playerBloc: _playerBloc,
-                                      playerState: state,
-                                      onPointsChanged: () {
-                                        setState(() {
-                                          startTimer();
-                                        });
-                                      },
-                                    ),
-                            )
-                          : Text("")
-                    ],
-                  ),
-                )),
-          ),
+                        state.players.length > 0
+                            ? Expanded(
+                                child: _entryToggle
+                                    ? PlayerList()
+                                    : CardList(
+                                        onPointsChanged: () {
+                                          setState(() {
+                                            startTimer();
+                                          });
+                                        },
+                                      ),
+                              )
+                            : Text("")
+                      ],
+                    ),
+                  )),
+            )
         );
       },
     );

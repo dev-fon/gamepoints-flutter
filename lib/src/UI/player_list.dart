@@ -1,37 +1,27 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gamepointsflutter/src/blocs/player_bloc/player_bloc.dart';
-import 'package:gamepointsflutter/src/blocs/player_bloc/player_state.dart';
 
 class PlayerList extends StatefulWidget {
-  final PlayerBloc playerBloc;
-  final PlayerState playerState;
-
-  const PlayerList(
-      {Key key,
-      @required this.playerBloc,
-      @required this.playerState})
-      : super(key: key);
-
   @override
   PlayerListState createState() => PlayerListState();
 }
 
 class PlayerListState extends State<PlayerList> {
-
-  PlayerListState({Key key});
-
   @override
   Widget build(BuildContext context) {
+    PlayerBloc playerBloc = BlocProvider.of<PlayerBloc>(context);
+
     return ListView.builder(
-      itemCount: widget.playerState.players.length,
+      itemCount: playerBloc.currentState.players.length,
       itemBuilder: (context, index) {
-        final player = widget.playerState.players[index];
+        final player = playerBloc.currentState.players[index];
 
         return Dismissible(
           key: Key(player.name),
           direction: DismissDirection.endToStart,
           onDismissed: (direction) {
-            widget.playerBloc.removePlayer(widget.playerState.players[index]);
+            playerBloc.removePlayer(playerBloc.currentState.players[index]);
 
             Scaffold.of(context).showSnackBar(
                 SnackBar(content: Text("${player.name} deleted")));

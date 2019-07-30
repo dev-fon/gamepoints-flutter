@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gamepointsflutter/src/blocs/player_bloc/player_bloc.dart';
-import 'package:gamepointsflutter/src/blocs/player_bloc/player_state.dart';
 
 import './player_widget.dart';
 
 class CardList extends StatelessWidget {
-  final PlayerBloc playerBloc;
-  final PlayerState playerState;
   final VoidCallback onPointsChanged;
 
   final List<Color> colors = [
@@ -20,12 +18,7 @@ class CardList extends StatelessWidget {
     Colors.brown
   ];
 
-  CardList(
-      {Key key,
-      @required this.playerBloc,
-      @required this.playerState,
-      this.onPointsChanged})
-      : super(key: key);
+  CardList({Key key, this.onPointsChanged}) : super(key: key);
 
   double getCardAspectRatio(BuildContext context, Orientation orientation) {
     var size = MediaQuery.of(context).size;
@@ -44,6 +37,8 @@ class CardList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    PlayerBloc playerBloc = BlocProvider.of<PlayerBloc>(context);
+
     return OrientationBuilder(
         key: key,
         builder: (context, orientation) {
@@ -54,10 +49,10 @@ class CardList extends StatelessWidget {
               childAspectRatio: getCardAspectRatio(context, orientation),
               mainAxisSpacing: 1.0,
               crossAxisSpacing: 1.0,
-              children: List.generate(playerState.players.length, (i) {
+              children:
+                  List.generate(playerBloc.currentState.players.length, (i) {
                 return PlayerWidget(
-                    playerBloc: playerBloc,
-                    player: playerState.players[i],
+                    player: playerBloc.currentState.players[i],
                     color: getPlayerColor(i),
                     onPointsChanged: () => onPointsChanged());
               }));
